@@ -80,41 +80,51 @@ where
         + AsRef<PF::ProviderRW>,
 {
     let chain = factory.chain_spec();
+    
+   
+    
+  
 
     let genesis = chain.genesis();
+    
     let hash = chain.genesis_hash();
-
+ 
+    
     // Check if we already have the genesis header or if we have the wrong one.
-    match factory.block_hash(0) {
+   match factory.block_hash(0) {
         Ok(None) | Err(ProviderError::MissingStaticFileBlock(StaticFileSegment::Headers, 0)) => {}
         Ok(Some(block_hash)) => {
             if block_hash == hash {
-                debug!("Genesis already written, skipping.");
+                println!("Genesis already written, skipping.");
                 return Ok(hash)
             }
-
+            println!("실패!!!");
             return Err(InitDatabaseError::GenesisHashMismatch {
+                
                 chainspec_hash: hash,
                 database_hash: block_hash,
             })
         }
         Err(e) => return Err(dbg!(e).into()),
-    }
+    } 
 
-    debug!("Writing genesis block.");
+    
 
     let alloc = &genesis.alloc;
 
+  
     // use transaction to insert genesis header
     let provider_rw = factory.database_provider_rw()?;
     insert_genesis_hashes(&provider_rw, alloc.iter())?;
     insert_genesis_history(&provider_rw, alloc.iter())?;
+
 
     // Insert header
     let static_file_provider = factory.static_file_provider();
     insert_genesis_header(&provider_rw, &static_file_provider, &chain)?;
 
     insert_genesis_state(&provider_rw, alloc.iter())?;
+
 
     // insert sync stage
     for stage in StageId::ALL {
@@ -123,14 +133,19 @@ where
 
     // Static file segments start empty, so we need to initialize the genesis block.
     let segment = StaticFileSegment::Receipts;
-    static_file_provider.latest_writer(segment)?.increment_block(0)?;
+    static_file_provider.latest_writer(segment)?.increment_block(1)?;
+
+
 
     let segment = StaticFileSegment::Transactions;
-    static_file_provider.latest_writer(segment)?.increment_block(0)?;
+    static_file_provider.latest_writer(segment)?.increment_block(1)?;
+
 
     // `commit_unwind`` will first commit the DB and then the static file provider, which is
     // necessary on `init_genesis`.
     UnifiedStorageWriter::commit_unwind(provider_rw, static_file_provider)?;
+    
+    
 
     Ok(hash)
 }

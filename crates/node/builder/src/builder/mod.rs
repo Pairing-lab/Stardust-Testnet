@@ -5,6 +5,7 @@
 pub mod add_ons;
 mod states;
 
+use reth_rpc_builder::RpcServerHandle;
 pub use states::*;
 
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use crate::{
     components::NodeComponentsBuilder,
     node::FullNode,
     rpc::{EthApiBuilderProvider, RethRpcServerHandles, RpcContext},
-    DefaultNodeLauncher, LaunchNode, Node, NodeHandle,
+    DefaultNodeLauncher, LaunchNode, LaunchSeqeuncer, Node, NodeHandle,
 };
 use futures::Future;
 use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
@@ -469,6 +470,8 @@ where
         launcher.launch_node(self.builder).await
     }
 
+
+
     /// Launches the node with the given closure.
     pub fn launch_with_fn<L, R>(self, launcher: L) -> R
     where
@@ -505,6 +508,15 @@ where
 
         let launcher = DefaultNodeLauncher::new(task_executor, builder.config.datadir());
         builder.launch_with(launcher).await
+    }
+
+    pub async fn launch_seq(
+        self,
+    ) -> eyre::Result<RpcServerHandle> {
+        let Self { builder, task_executor } = self;
+
+        let launcher = DefaultNodeLauncher::new(task_executor, builder.config.datadir());
+        builder.launch_sequencer_with(launcher).await
     }
 }
 

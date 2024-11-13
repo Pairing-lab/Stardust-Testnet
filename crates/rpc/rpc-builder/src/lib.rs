@@ -608,6 +608,7 @@ where
 
             modules.config = module_config;
             modules.http = registry.maybe_module(http.as_ref());
+            println!("{:?}", modules.http);
             modules.ws = registry.maybe_module(ws.as_ref());
             modules.ipc = registry.maybe_module(ipc.as_ref());
         }
@@ -1462,6 +1463,8 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             constants::DEFAULT_HTTP_RPC_PORT,
         )));
 
+
+
         let ws_socket_addr = self.ws_addr.unwrap_or(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::LOCALHOST,
             constants::DEFAULT_WS_RPC_PORT,
@@ -1571,7 +1574,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
 
             ws_local_addr = Some(addr);
             ws_server = Some(server);
+
         }
+
+
 
         if let Some(builder) = self.http_server_config {
             let server = builder
@@ -1594,12 +1600,22 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
             http_local_addr = Some(local_addr);
             http_server = Some(server);
+            println!("http 이쪽입니다 ");
+            println!("{:?}", http_server);
+
         }
 
+
         http_handle = http_server
-            .map(|http_server| http_server.start(modules.http.clone().expect("http server error")));
+            .map(|http_server|
+                {
+                    println!("서버 시작!!!");
+                    http_server.start(modules.http.clone().expect("http server error"))
+                });
         ws_handle = ws_server
             .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
+
+
         Ok(RpcServerHandle {
             http_local_addr,
             ws_local_addr,

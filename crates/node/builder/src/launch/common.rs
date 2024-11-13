@@ -536,6 +536,7 @@ where
 
     /// Convenience function to [`Self::init_genesis`]
     pub fn with_genesis(self) -> Result<Self, InitDatabaseError> {
+        
         init_genesis(self.provider_factory())?;
         Ok(self)
     }

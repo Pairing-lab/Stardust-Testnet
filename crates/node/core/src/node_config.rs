@@ -158,6 +158,24 @@ impl<ChainSpec> NodeConfig<ChainSpec> {
         }
     }
 
+    pub fn new1(chain: Arc<ChainSpec>) -> Self {
+        Self {
+            config: None,
+            chain,
+            metrics: None,
+            instance: 1,
+            network: NetworkArgs::default(),
+            rpc: RpcServerArgs::default(),
+            txpool: TxPoolArgs::default(),
+            builder: PayloadBuilderArgs::default(),
+            debug: DebugArgs::default(),
+            db: DatabaseArgs::default(),
+            dev: DevArgs::default(),
+            pruning: PruningArgs::default(),
+            datadir: DatadirArgs::default(),
+        }
+    }
+
     /// Sets --dev mode for the node.
     ///
     /// In addition to setting the `--dev` flag, this also:

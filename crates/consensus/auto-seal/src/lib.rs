@@ -134,6 +134,12 @@ where
         let latest_header = client.latest_header().ok().flatten().unwrap_or_else(|| {
             SealedHeader::new(chain_spec.genesis_header().clone(), chain_spec.genesis_hash())
         });
+        
+        println!("chain spec is {:?}", chain_spec);
+        println!("pool size is {:?}", pool.pool_size());
+        println!("mining mode is {:?}", mode);
+       
+        
 
         Self {
             storage: Storage::new(latest_header),

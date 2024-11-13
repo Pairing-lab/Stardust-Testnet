@@ -95,6 +95,8 @@ where
             config,
         } = target;
         let NodeHooks { on_component_initialized, on_node_started, .. } = hooks;
+        
+        println!("engine node launcher 가동중입니다!!!!");
 
         // TODO: move tree_config and canon_state_notification_sender
         // initialization to with_blockchain_db once the engine revamp is done
@@ -177,6 +179,8 @@ where
             Box::new(ctx.task_executor().clone()),
         ));
         info!(target: "reth::cli", "StaticFileProducer initialized");
+        
+        
 
         // Configure the pipeline
         let pipeline_exex_handle =
@@ -209,7 +213,8 @@ where
 
         let pruner_events = pruner.events();
         info!(target: "reth::cli", prune_config=?ctx.prune_config().unwrap_or_default(), "Pruner initialized");
-
+        
+        
         // Configure the consensus engine
         let mut eth_service = EngineService::new(
             ctx.consensus(),
@@ -280,6 +285,9 @@ where
 
         // extract the jwt secret from the args if possible
         let jwt_secret = ctx.auth_jwt_secret()?;
+        
+        let xx = ctx.node_config();
+        
 
         // Start RPC servers
         let (rpc_server_handles, rpc_registry) = launch_rpc_servers(
@@ -290,6 +298,8 @@ where
             rpc,
         )
         .await?;
+        
+        println!("rpc 주소는 다음과 같습니다 {:?}", rpc_server_handles.rpc.http_local_addr().unwrap());
 
         // TODO: migrate to devmode with https://github.com/paradigmxyz/reth/issues/10104
         if let Some(maybe_custom_etherscan_url) = ctx.node_config().debug.etherscan.clone() {
@@ -416,4 +426,6 @@ where
 
         Ok(handle)
     }
+
+    
 }

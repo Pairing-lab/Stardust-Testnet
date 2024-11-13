@@ -121,6 +121,25 @@ pub static DEV: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     .into()
 });
 
+pub static STARDUST: Lazy<Arc<ChainSpec>> =  Lazy::new(|| {
+    let mut spec = ChainSpec {
+        chain: Chain::dev(),
+        genesis: serde_json::from_str(include_str!("../res/genesis/stardust.json"))
+            .expect("Can't deserialize stardust genesis json"),
+        genesis_hash: once_cell_set(DEV_GENESIS_HASH),
+        genesis_header: Default::default(),
+        paris_block_and_final_difficulty: Some((0, U256::from(1))),
+        hardforks: EthereumHardfork::holesky().into(),
+        deposit_contract: None,
+        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
+        max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
+        prune_delete_limit: 10000,
+    };
+    println!("genesis 블록은 ~~ {:?}", spec.genesis);
+    spec.genesis.config.dao_fork_support = true;
+    spec.into()
+});
+
 /// A wrapper around [`BaseFeeParams`] that allows for specifying constant or dynamic EIP-1559
 /// parameters based on the active [Hardfork].
 #[derive(Clone, Debug, PartialEq, Eq)]

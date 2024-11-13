@@ -311,22 +311,30 @@ impl StaticFileProviderRW {
         &mut self,
         expected_block_number: BlockNumber,
     ) -> ProviderResult<BlockNumber> {
+        println!("생존1");
         let segment = self.writer.user_header().segment();
 
+        println!("생존2");
+
         self.check_next_block_number(expected_block_number)?;
+        println!("생존3");
 
         let start = Instant::now();
         if let Some(last_block) = self.writer.user_header().block_end() {
             // We have finished the previous static file and must freeze it
+            println!("생존");
             if last_block == self.writer.user_header().expected_block_end() {
                 // Commits offsets and new user_header to disk
                 self.commit()?;
+                println!("생존");
 
                 // Opens the new static file
                 let (writer, data_path) =
                     Self::open(segment, last_block + 1, self.reader.clone(), self.metrics.clone())?;
                 self.writer = writer;
                 self.data_path = data_path;
+                
+                println!("생존");
 
                 *self.writer.user_header_mut() = SegmentHeader::new(
                     self.reader().find_fixed_range(last_block + 1),
@@ -336,6 +344,8 @@ impl StaticFileProviderRW {
                 );
             }
         }
+
+        println!("생존");
 
         let block = self.writer.user_header_mut().increment_block();
         if let Some(metrics) = &self.metrics {

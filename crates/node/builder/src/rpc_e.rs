@@ -17,12 +17,13 @@ use reth_node_core::{
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_provider::providers::ProviderNodeTypes;
 use reth_rpc_builder::{
-    auth::{AuthRpcModule, AuthServerHandle}, config::RethRpcServerConfig, RpcModuleBuilder, RpcRegistryInner, RpcServerHandle, ServerBuilder, TransportRpcModules
+    auth::{AuthRpcModule, AuthServerHandle},
+    config::RethRpcServerConfig,
+    RpcModuleBuilder, RpcRegistryInner, RpcServerHandle, TransportRpcModules,
 };
 use reth_rpc_layer::JwtSecret;
 use reth_tasks::TaskExecutor;
 use reth_tracing::tracing::{debug, info};
-use reth_rpc_server_types::{constants, RethRpcModule, RpcModuleSelection};
 
 use crate::{EthApiBuilderCtx, RpcAddOns};
 
@@ -33,8 +34,6 @@ use crate::{EthApiBuilderCtx, RpcAddOns};
 pub struct RethRpcServerHandles {
     /// The regular RPC server handle to all configured transports.
     pub rpc: RpcServerHandle,
-    /// The handle to the auth server (engine API)
-    pub auth: AuthServerHandle,
 }
 
 /// Contains hooks that are called during the rpc setup.
@@ -294,23 +293,16 @@ where
 /// Launch the rpc servers.
 pub async fn launch_rpc_servers<Node, Engine, EthApi>(
     node: Node,
-    engine_api: Engine,
     config: &NodeConfig<<Node::Types as NodeTypes>::ChainSpec>,
-    jwt_secret: JwtSecret,
     add_ons: RpcAddOns<Node, EthApi>,
 ) -> eyre::Result<(RethRpcServerHandles, RpcRegistry<Node, EthApi>)>
 where
     Node: FullNodeComponents<Types: ProviderNodeTypes> + Clone,
-    Engine: EngineApiServer<<Node::Types as NodeTypesWithEngine>::Engine>,
     EthApi: EthApiBuilderProvider<Node> + FullEthApiServer,
 {
     let auth_config = config.rpc.auth_server_config(jwt_secret)?;
     let module_config = config.rpc.transport_rpc_module_config();
     debug!(target: "reth::cli", http=?module_config.http(), ws=?module_config.ws(), "Using RPC module config");
-
-
-    let module_config =  module_config.with_http([RethRpcModule::Eth, RethRpcModule::Admin]);
-    
 
     let (mut modules, mut auth_module, registry) = RpcModuleBuilder::default()
         .with_provider(node.provider().clone())
@@ -320,7 +312,7 @@ where
         .with_executor(node.task_executor().clone())
         .with_evm_config(node.evm_config().clone())
         .with_block_executor(node.block_executor().clone())
-        .build_with_auth_server(module_config, engine_api, EthApi::eth_api_builder());
+        .build(module_config,EthApi::eth_api_builder());
 
     let mut registry = RpcRegistry { registry };
     let ctx = RpcContext {
@@ -335,14 +327,9 @@ where
     let RpcHooks { on_rpc_started, extend_rpc_modules } = hooks;
 
     extend_rpc_modules.extend_rpc_modules(ctx)?;
-    
-    
 
     let server_config = config.rpc.rpc_server_config();
-    let server_config = config.rpc.rpc_server_config().with_http(ServerBuilder::new());
-    
     let cloned_modules = modules.clone();
-    println!("rpc 핸들러 진입");
     let launch_rpc = server_config.start(&cloned_modules).map_ok(|handle| {
         if let Some(path) = handle.ipc_endpoint() {
             info!(target: "reth::cli", %path, "RPC IPC server started");
@@ -359,7 +346,7 @@ where
     let launch_auth = auth_module.clone().start_server(auth_config).map_ok(|handle| {
         let addr = handle.local_addr();
         if let Some(ipc_endpoint) = handle.ipc_endpoint() {
-            println!("http 핸들러 시작 ");
+            info!(target: "reth::cli", url=%addr, ipc_endpoint=%ipc_endpoint,"RPC auth server started");
         } else {
             info!(target: "reth::cli", url=%addr, "RPC auth server started");
         }
@@ -398,61 +385,4 @@ where
     fn eth_api_builder() -> Box<dyn Fn(&EthApiBuilderCtx<N, Self>) -> Self + Send> {
         F::builder()
     }
-}
-
-
-pub async fn launch_without_engine_servers<Node, EthApi>(
-    node: Node,
-    config: &NodeConfig<<Node::Types as NodeTypes>::ChainSpec>,
-    add_ons: RpcAddOns<Node, EthApi>,
-) -> eyre::Result<(RpcServerHandle, RpcRegistry<Node, EthApi>)>
-where
-    Node: FullNodeComponents<Types: ProviderNodeTypes> + Clone,
-    EthApi: EthApiBuilderProvider<Node> + FullEthApiServer,
-{
-    let module_config = config.rpc.transport_rpc_module_config();
-    debug!(target: "reth::cli", http=?module_config.http(), ws=?module_config.ws(), "Using RPC module config");
-
-
-    let mut modulebuilder = RpcModuleBuilder::default()
-        .with_provider(node.provider().clone())
-        .with_pool(node.pool().clone())
-        .with_network(node.network().clone())
-        .with_events(node.provider().clone())
-        .with_executor(node.task_executor().clone())
-        .with_evm_config(node.evm_config().clone())
-        .with_block_executor(node.block_executor().clone());
-
-    let x = modulebuilder.clone().into_registry(module_config.config().unwrap().clone(), EthApi::eth_api_builder());
-
-
-    let module_config =  module_config.with_http([RethRpcModule::Eth, RethRpcModule::Admin]);
-
-    //println!("{:?}", module_config);
-
-
-
-    let modules = modulebuilder.build(module_config, EthApi::eth_api_builder() );
-
-    let mut registry = RpcRegistry { registry: x };
-
-
-    let RpcAddOns { hooks, .. } = add_ons;
-    let RpcHooks { on_rpc_started, extend_rpc_modules } = hooks;
-
-
-    let server_config = config.rpc.rpc_server_config().with_http(ServerBuilder::new());
-    let cloned_modules = modules.clone();
-
-
-    //println!("{:?}", server_config);
-    let launch_rpc = server_config.start(&cloned_modules);
-
-    // launch servers concurrently
-    let rpc = launch_rpc.await?;
-
-    println!("launch server 완료");
-    let handle = rpc;
-    //println!("{:?}", handle.http_url().unwrap());
-    Ok((handle, registry))
 }

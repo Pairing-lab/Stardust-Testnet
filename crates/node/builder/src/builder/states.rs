@@ -16,14 +16,11 @@ use reth_node_core::{
     rpc::eth::{helpers::AddDevSigners, FullEthApiServer},
 };
 use reth_payload_builder::PayloadBuilderHandle;
+use reth_rpc_builder::RpcServerHandle;
 use reth_tasks::TaskExecutor;
 
 use crate::{
-    components::{NodeComponents, NodeComponentsBuilder},
-    hooks::NodeHooks,
-    launch::LaunchNode,
-    rpc::{EthApiBuilderProvider, RethRpcServerHandles, RpcContext, RpcHooks},
-    AddOns, FullNode, RpcAddOns,
+    components::{NodeComponents, NodeComponentsBuilder}, hooks::NodeHooks, launch::LaunchNode, rpc::{EthApiBuilderProvider, RethRpcServerHandles, RpcContext, RpcHooks}, AddOns, FullNode, LaunchSeqeuncer, RpcAddOns
 };
 
 /// A node builder that also has the configured types.
@@ -288,5 +285,13 @@ where
         L: LaunchNode<Self>,
     {
         launcher.launch_node(self).await
+    }
+
+
+    pub async fn launch_sequencer_with<L>(self, launcher: L) -> eyre::Result<RpcServerHandle>
+    where
+        L: LaunchSeqeuncer<Self>,
+    {
+        launcher.launch_sequencer(self).await
     }
 }
