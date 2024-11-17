@@ -18,6 +18,10 @@ use reth_node_core::{
 };
 use reth_node_metrics::recorder::install_prometheus_recorder;
 use std::{ffi::OsString, fmt, future::Future, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::path::Path;
+use std::str::FromStr;
+use serde::de::Unexpected::Str;
+use reth_node_core::dirs::{ChainPath, DataDirPath};
 
 /// Start the node
 #[derive(Debug, Parser)]
@@ -162,6 +166,10 @@ impl<
             pruning,
             ext,
         } = self;
+        
+        println!("디비 주소 입니다 {:?}, {:?}", datadir , db );
+        
+        
 
         // set up node config
         let mut node_config = NodeConfig {
@@ -183,9 +191,18 @@ impl<
         // Register the prometheus recorder before creating the database,
         // because database init needs it to register metrics.
         let _ = install_prometheus_recorder();
+        
 
         let data_dir = node_config.datadir();
         let db_path = data_dir.db();
+
+        // 주의하세요 일반적인 경우에는 지우세요 
+        let x = db_path.to_str().unwrap();
+        let string =  String::from(x).replace("dev", "stardust");
+        let db_path = PathBuf::from_str(string.as_str())?;
+        
+
+        println!("진짜 디비 주소 입니다 {:?}, {:?}", data_dir , db_path );
 
         tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
         let database = Arc::new(init_db(db_path.clone(), self.db.database_args())?.with_metrics());

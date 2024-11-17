@@ -35,6 +35,7 @@ use reth_tasks::TaskExecutor;
 use reth_tokio_util::EventSender;
 use reth_tracing::tracing::{debug, error, info};
 use std::sync::Arc;
+use alloy_primitives::BlockNumber;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -170,6 +171,8 @@ where
             .maybe_store_messages(node_config.debug.engine_api_store.clone());
 
         let max_block = ctx.max_block(network_client.clone()).await?;
+        
+        
         let mut hooks = EngineHooks::new();
 
         let static_file_producer = ctx.static_file_producer();
@@ -179,6 +182,8 @@ where
             Box::new(ctx.task_executor().clone()),
         ));
         info!(target: "reth::cli", "StaticFileProducer initialized");
+
+        println!("{:?}", ctx.consensus());
         
         
 
@@ -198,6 +203,8 @@ where
             ctx.components().block_executor().clone(),
             pipeline_exex_handle,
         )?;
+        
+        
 
         // The new engine writes directly to static files. This ensures that they're up to the tip.
         pipeline.move_to_static_files()?;

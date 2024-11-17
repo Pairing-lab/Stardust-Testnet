@@ -316,11 +316,12 @@ where
     type Consensus = Arc<dyn reth_consensus::Consensus>;
 
     async fn build_consensus(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Consensus> {
-        if ctx.is_dev() {
+        /*if ctx.is_dev() {
             Ok(Arc::new(AutoSealConsensus::new(ctx.chain_spec())))
         } else {
             Ok(Arc::new(EthBeaconConsensus::new(ctx.chain_spec())))
-        }
+        }*/
+        Ok(Arc::new(AutoSealConsensus::new(ctx.chain_spec())))
     }
 }
 

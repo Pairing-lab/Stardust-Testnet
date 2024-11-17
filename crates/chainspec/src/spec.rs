@@ -128,15 +128,13 @@ pub static STARDUST: Lazy<Arc<ChainSpec>> =  Lazy::new(|| {
             .expect("Can't deserialize stardust genesis json"),
         genesis_hash: once_cell_set(DEV_GENESIS_HASH),
         genesis_header: Default::default(),
-        paris_block_and_final_difficulty: Some((0, U256::from(1))),
-        hardforks: EthereumHardfork::holesky().into(),
+        paris_block_and_final_difficulty: Some((0, U256::from(0))),
+        hardforks: DEV_HARDFORKS.clone(),
         deposit_contract: None,
         base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
-        max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
-        prune_delete_limit: 10000,
+        ..Default::default()
     };
     println!("genesis 블록은 ~~ {:?}", spec.genesis);
-    spec.genesis.config.dao_fork_support = true;
     spec.into()
 });
 

@@ -133,12 +133,12 @@ where
 
     // Static file segments start empty, so we need to initialize the genesis block.
     let segment = StaticFileSegment::Receipts;
-    static_file_provider.latest_writer(segment)?.increment_block(1)?;
+    static_file_provider.latest_writer(segment)?.increment_block(0)?;
 
 
 
     let segment = StaticFileSegment::Transactions;
-    static_file_provider.latest_writer(segment)?.increment_block(1)?;
+    static_file_provider.latest_writer(segment)?.increment_block(0)?;
 
 
     // `commit_unwind`` will first commit the DB and then the static file provider, which is

@@ -65,6 +65,8 @@ impl SequencerClient {
             );
             SequencerClientError::InvalidSequencerTransaction
         })?;
+        
+        println!("this is body {:?}", body);
 
         self.http_client()
             .post(self.endpoint())

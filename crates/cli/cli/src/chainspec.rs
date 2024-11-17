@@ -76,6 +76,8 @@ pub fn parse_genesis(s: &str) -> eyre::Result<alloy_genesis::Genesis> {
             }
         }
     };
+    
+    println!("여기까진 오케이");
 
     Ok(serde_json::from_str(&raw)?)
 }
