@@ -67,7 +67,7 @@ pub struct Pipeline<N: ProviderNodeTypes> {
     /// Provider factory.
     provider_factory: ProviderFactory<N>,
     /// All configured stages in the order they will be executed.
-    stages: Vec<BoxedStage<<ProviderFactory<N> as DatabaseProviderFactory>::ProviderRW>>,
+    pub stages: Vec<BoxedStage<<ProviderFactory<N> as DatabaseProviderFactory>::ProviderRW>>,
     /// The maximum block number to sync to.
     max_block: Option<BlockNumber>,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,

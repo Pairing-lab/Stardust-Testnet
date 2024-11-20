@@ -197,12 +197,10 @@ impl<
         let db_path = data_dir.db();
 
         // 주의하세요 일반적인 경우에는 지우세요 
-        let x = db_path.to_str().unwrap();
-        let string =  String::from(x).replace("dev", "stardust");
-        let db_path = PathBuf::from_str(string.as_str())?;
-        
-
-        println!("진짜 디비 주소 입니다 {:?}, {:?}", data_dir , db_path );
+        //let x = db_path.to_str().unwrap();
+        //let string =  String::from(x).replace("dev", "stardust");
+       // let db_path = PathBuf::from_str(string.as_str())?;
+        //println!("진짜 디비 주소 입니다 {:?}, {:?}", data_dir , db_path );
 
         tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
         let database = Arc::new(init_db(db_path.clone(), self.db.database_args())?.with_metrics());

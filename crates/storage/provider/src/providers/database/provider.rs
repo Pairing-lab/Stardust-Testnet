@@ -2429,6 +2429,7 @@ impl<TX: DbTxMut + DbTx, Spec: Send + Sync> StateChangeWriter for DatabaseProvid
         tracing::trace!(len = changes.accounts.len(), "Writing new account state");
         let mut accounts_cursor = self.tx_ref().cursor_write::<tables::PlainAccountState>()?;
         // write account to database.
+        println!("db 쓰기 시작 {:?}", changes.accounts);
         for (address, account) in changes.accounts {
             if let Some(account) = account {
                 tracing::trace!(?address, "Updating plain state account");
@@ -2438,6 +2439,8 @@ impl<TX: DbTxMut + DbTx, Spec: Send + Sync> StateChangeWriter for DatabaseProvid
                 accounts_cursor.delete_current()?;
             }
         }
+        
+       
 
         // Write bytecode
         tracing::trace!(len = changes.contracts.len(), "Writing bytecodes");
@@ -3372,7 +3375,7 @@ impl<TX: DbTxMut + DbTx + 'static, Spec: Send + Sync + EthereumHardforks + 'stat
 
         self.tx.put::<tables::CanonicalHeaders>(block_number, block.hash())?;
         durations_recorder.record_relative(metrics::Action::InsertCanonicalHeaders);
-
+        
         // Put header with canonical hashes.
         self.tx.put::<tables::Headers>(block_number, block.header.as_ref().clone())?;
         durations_recorder.record_relative(metrics::Action::InsertHeaders);
@@ -3386,10 +3389,13 @@ impl<TX: DbTxMut + DbTx + 'static, Spec: Send + Sync + EthereumHardforks + 'stat
         } else {
             let parent_block_number = block_number - 1;
             let parent_ttd = self.header_td_by_number(parent_block_number)?.unwrap_or_default();
+            println!("parent ttd is .. {:?}", parent_ttd);
             durations_recorder.record_relative(metrics::Action::GetParentTD);
             parent_ttd + block.difficulty
         };
 
+        println!("db location is ... {:?}",self.static_file_provider.directory());
+        
         self.tx.put::<tables::HeaderTerminalDifficulties>(block_number, ttd.into())?;
         durations_recorder.record_relative(metrics::Action::InsertHeaderTerminalDifficulties);
 
@@ -3530,12 +3536,13 @@ impl<TX: DbTxMut + DbTx + 'static, Spec: Send + Sync + EthereumHardforks + 'stat
             self.insert_block(block)?;
             durations_recorder.record_relative(metrics::Action::InsertBlock);
         }
-
+        
         // Write state and changesets to the database.
         // Must be written after blocks because of the receipt lookup.
         // TODO: should _these_ be moved to storagewriter? seems like storagewriter should be
         // _above_ db provider
         let mut storage_writer = UnifiedStorageWriter::from_database(self);
+        
         storage_writer.write_to_storage(execution_outcome, OriginalValuesKnown::No)?;
         durations_recorder.record_relative(metrics::Action::InsertState);
 
@@ -3552,6 +3559,7 @@ impl<TX: DbTxMut + DbTx + 'static, Spec: Send + Sync + EthereumHardforks + 'stat
         durations_recorder.record_relative(metrics::Action::UpdatePipelineStages);
 
         debug!(target: "providers::db", range = ?first_number..=last_block_number, actions = ?durations_recorder.actions, "Appended blocks");
+        println!("블록 추가함 {:?} , {:?} ",first_number, last_block_number);
 
         Ok(())
     }

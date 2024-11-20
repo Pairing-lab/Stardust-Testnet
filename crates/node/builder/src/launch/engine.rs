@@ -1,5 +1,6 @@
 //! Engine node related functionality.
 
+use std::ops::{Deref, RangeInclusive};
 use alloy_rpc_types::engine::ClientVersionV1;
 use futures::{future::Either, stream, stream_select, StreamExt};
 use reth_beacon_consensus::{
@@ -26,19 +27,32 @@ use reth_node_core::{
     rpc::eth::{helpers::AddDevSigners, FullEthApiServer},
     version::{CARGO_PKG_VERSION, CLIENT_CODE, NAME_CLIENT, VERGEN_GIT_SHA},
 };
+use reth_payload_builder::{EthBuiltPayload,EthPayloadBuilderAttributes,PayloadBuilderHandle,PayloadBuilderService};
 use reth_node_events::{cl::ConsensusLayerHealthEvents, node};
 use reth_payload_primitives::PayloadBuilder;
-use reth_primitives::EthereumHardforks;
+use reth_primitives::{BlockWithSenders, EthereumHardforks, Receipt, Receipts, Requests, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionSigned, TransactionSignedEcRecovered};
 use reth_provider::providers::{BlockchainProvider2, ProviderNodeTypes};
 use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
 use reth_tasks::TaskExecutor;
 use reth_tokio_util::EventSender;
 use reth_tracing::tracing::{debug, error, info};
 use std::sync::Arc;
-use alloy_primitives::BlockNumber;
+use alloy_consensus::Header;
+use alloy_primitives::{BlockHash, BlockNumber, FixedBytes, Sealable, B256};
+use alloy_primitives::ruint::aliases::U256;
+use alloy_rpc_types::{BlockHashOrNumber, Bundle};
+use ethereum_consensus::phase0::state_transition;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-
+use reth_auto_seal_consensus::{AutoSealBuilder, AutoSealConsensus};
+use reth_consensus::Consensus;
+use reth_db_common::init::insert_state;
+use reth_evm::{ConfigureEvm, ConfigureEvmEnv};
+use reth_evm::execute::{BlockExecutorProvider, ExecutionOutcome, Executor};
+use reth_execution_types::{BlockExecutionInput, BlockExecutionOutput};
+use reth_node_core::primitives::BlockNumberOrTag;
+use reth_node_core::primitives::revm_primitives::{BlockEnv, EnvWithHandlerCfg, TxEnv};
+use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction, TransactionPool};
 use crate::{
     common::{Attached, LaunchContextWith, WithConfigs},
     hooks::NodeHooks,
@@ -47,6 +61,20 @@ use crate::{
     AddOns, ExExLauncher, FullNode, LaunchContext, LaunchNode, NodeAdapter,
     NodeBuilderWithComponents, NodeComponents, NodeComponentsBuilder, NodeHandle, NodeTypesAdapter,
 };
+use reth_node_core::rpc::compat::engine::payload::try_into_block;
+use reth_primitives::revm_primitives::{AccessList, CfgEnv, Env};
+use reth_primitives::transaction::FillTxEnv;
+use reth_provider::{BlockHashReader, BlockReader, BlockWriter, ChainStateBlockWriter, DBProvider, DatabaseProviderFactory, HeaderProvider, StageCheckpointWriter, StateChangeWriter, StateProviderFactory, StateReader, StateRootProvider, StaticFileProviderFactory};
+use reth_revm::db::{BundleState, CacheDB, OriginalValuesKnown};
+use reth_revm::{revm, State};
+use reth_revm::db::states::{PlainStorageChangeset, StateChangeset};
+use reth_revm::primitives::HandlerCfg;
+use reth_rpc_eth_types::simulate::build_block;
+use reth_rpc_eth_types::StateCacheDb;
+use reth_transaction_pool::validate::ValidPoolTransaction;
+use reth_trie::{HashedPostState, HashedPostStateSorted};
+use reth_trie::updates::TrieUpdates;
+use crate::components::ExecutorBuilder;
 
 /// The engine node launcher.
 #[derive(Debug)]
@@ -140,6 +168,8 @@ where
             }, tree_config, canon_state_notification_sender)?
             .with_components(components_builder, on_component_initialized).await?;
 
+
+
         // spawn exexs
         let exex_manager_handle = ExExLauncher::new(
             ctx.head(),
@@ -170,7 +200,8 @@ where
             // during this run.
             .maybe_store_messages(node_config.debug.engine_api_store.clone());
 
-        let max_block = ctx.max_block(network_client.clone()).await?;
+        let max_block = ctx.max_block(network_client.clone() ).await?;
+
         
         
         let mut hooks = EngineHooks::new();
@@ -190,7 +221,7 @@ where
         // Configure the pipeline
         let pipeline_exex_handle =
             exex_manager_handle.clone().unwrap_or_else(ExExManagerHandle::empty);
-        let pipeline = build_networked_pipeline(
+        let mut pipeline = build_networked_pipeline(
             &ctx.toml_config().stages,
             network_client.clone(),
             ctx.consensus(),
@@ -198,7 +229,7 @@ where
             ctx.task_executor(),
             ctx.sync_metrics_tx(),
             ctx.prune_config(),
-            max_block,
+            Some(10000),
             static_file_producer,
             ctx.components().block_executor().clone(),
             pipeline_exex_handle,
@@ -239,6 +270,7 @@ where
             ctx.invalid_block_hook()?,
             ctx.sync_metrics_tx(),
         );
+        
 
         let event_sender = EventSender::default();
 
@@ -277,6 +309,8 @@ where
             version: CARGO_PKG_VERSION.to_string(),
             commit: VERGEN_GIT_SHA.to_string(),
         };
+
+
         let engine_api = EngineApi::new(
             ctx.blockchain_db().clone(),
             ctx.chain_spec(),
@@ -288,6 +322,8 @@ where
             EngineCapabilities::default(),
             ctx.components().engine_validator().clone(),
         );
+        
+       
         info!(target: "reth::cli", "Engine API handler initialized");
 
         // extract the jwt secret from the args if possible
@@ -349,6 +385,8 @@ where
             .map_err(|e| eyre::eyre!("Failed to subscribe to payload builder events: {:?}", e))?
             .into_built_payload_stream()
             .fuse();
+
+
         let chainspec = ctx.chain_spec();
         let (exit, rx) = oneshot::channel();
         info!(target: "reth::cli", "Starting consensus engine");
@@ -423,6 +461,269 @@ where
         // Notify on node started
         on_node_started.on_event(full_node.clone())?;
 
+
+
+
+        let mut count = 0;
+        let mut txs= full_node.pool.all_transactions();
+
+
+        let mut queue = txs.queued_recovered();
+        let mut pend = txs.pending_recovered();
+
+        println!("all txss are .. {:?}", txs);
+ ;
+
+        let mut block_body = reth_primitives::BlockBody{
+            transactions: Vec::new(),
+            ommers: Vec::new(),
+            withdrawals: None,
+            requests: None,
+        };
+
+        let mut add_v = Vec::new();
+
+
+        let db_provider = full_node.provider.database_provider_rw()?;
+        let mut sc_set = db_provider.take_state(RangeInclusive::new(0,0)).unwrap();
+        let mut sc_set = sc_set.bundle.into_plain_state(OriginalValuesKnown::No);
+
+        while let Some(tx) =  queue.next(){
+
+            let tx: TransactionSignedEcRecovered = tx.into();
+            let mut tx_env = TxEnv::default();
+            tx.fill_tx_env(&mut tx_env, tx.signer());
+
+            tx_env.nonce = Some(0);
+
+
+            let mut cfg_ = CfgEnv::default();
+            cfg_.chain_id = 1337;
+
+            let env = Env{
+                cfg: cfg_.clone(),
+                block: BlockEnv::default(),
+                tx: tx_env.clone()
+            };
+
+            println!("{:?}", tx_env);
+
+
+            
+            let state_provider = full_node.provider.state_by_block_number_or_tag(BlockNumberOrTag::Number(0)).unwrap();
+            
+            
+            let mut db = reth_revm::database::StateProviderDatabase::new(state_provider);
+            let env_with_box = Box::new(env);
+            let cfgg = EnvWithHandlerCfg::new(env_with_box,HandlerCfg::default());
+
+            let mut evm = full_node.evm_config.evm_with_env(db, cfgg);
+            let result = evm.transact();
+
+            println!("\n\n\n #######account{:?}\n\n\n", sc_set.accounts);
+            println!("\n\n\n #######storage{:?}\n\n\n", sc_set.storage);
+
+            let mut sc_set = sc_set.clone();
+
+
+            match  result{
+                Ok(x) =>{
+
+                    let tx: TransactionSigned = tx.into();
+                    add_v.push(tx.recover_signer().unwrap());
+                    block_body.transactions.push(tx);
+                    println!("state is... {:?}",x.state);
+                    for (address, account) in x.state.iter() {
+                        if let Some(index) = sc_set.accounts.iter().position(|addr| {
+                            let (ad , ac) = addr;
+                            ad == address
+                        }) {
+                            sc_set.accounts[index].1 = Some(account.info.clone());
+                        }
+                        else{
+                            sc_set.accounts.push((address.clone(),Some(account.info.clone())));
+                        }
+
+                    }
+
+                    println!("\n\n\n #######account{:?}\n\n\n", sc_set.accounts);
+                    println!("\n\n\n #######storage{:?}\n\n\n", sc_set.storage);
+
+                    let r = db_provider.write_state_changes(sc_set);
+                    match r {
+                        Ok(r) => { println!(" 쓰기 성공 ");},
+                        Err(e) => {println!("실패");}
+                    }
+                }
+                Err(e) =>{
+
+                }
+            }
+
+        }
+
+        while let Some(tx) =  pend.next(){
+
+            let tx: TransactionSignedEcRecovered = tx.into();
+            let mut tx_env = TxEnv::default();
+            tx.fill_tx_env(&mut tx_env, tx.signer());
+
+            tx_env.nonce = Some(0);
+
+
+            let mut cfg_ = CfgEnv::default();
+            cfg_.chain_id = 1337;
+
+            let env = Env{
+                cfg: cfg_.clone(),
+                block: BlockEnv::default(),
+                tx: tx_env.clone()
+            };
+
+            println!("{:?}", tx_env);
+
+
+
+            let state_provider = full_node.provider.state_by_block_number_or_tag(BlockNumberOrTag::Number(0)).unwrap();
+
+            let mut db = reth_revm::database::StateProviderDatabase::new(state_provider);
+            let env_with_box = Box::new(env);
+            let cfgg = EnvWithHandlerCfg::new(env_with_box,HandlerCfg::default());
+
+            let mut evm = full_node.evm_config.evm_with_env(db, cfgg);
+            let result = evm.transact();
+
+            println!("\n\n\n #######account{:?}\n\n\n", sc_set.accounts);
+            println!("\n\n\n #######storage{:?}\n\n\n", sc_set.storage);
+
+            let mut sc_set = sc_set.clone();
+
+
+            match  result{
+                Ok(x) =>{
+
+                    let tx: TransactionSigned = tx.into();
+                    add_v.push(tx.recover_signer().unwrap());
+                    block_body.transactions.push(tx);
+                    println!("state is... {:?}",x.state);
+                    for (address, account) in x.state.iter() {
+                        if let Some(index) = sc_set.accounts.iter().position(|addr| {
+                            let (ad , ac) = addr;
+                            ad == address
+                        }) {
+                            sc_set.accounts[index].1 = Some(account.info.clone());
+                        }
+                        else{
+                            sc_set.accounts.push((address.clone(),Some(account.info.clone())));
+                        }
+
+                    }
+
+                    println!("\n\n\n #######account{:?}\n\n\n", sc_set.accounts);
+                    println!("\n\n\n #######storage{:?}\n\n\n", sc_set.storage);
+
+                    let r = db_provider.write_state_changes(sc_set);
+                    match r {
+                        Ok(r) => { println!(" 쓰기 성공 ");},
+                        Err(e) => {println!("실패");}
+                    }
+                }
+                Err(e) =>{
+
+                }
+            }
+
+        }
+
+       let b_hash = full_node.provider.convert_block_hash(BlockHashOrNumber::Number(0)).unwrap().unwrap();
+
+        if add_v.len() > 0 {
+            println!("okay");
+            let header = Header {
+                parent_hash: b_hash,
+                ommers_hash: FixedBytes::<32>::ZERO, // 비어있으므로 EMPTY_LIST_HASH가 됨
+                beneficiary: add_v[0], // 첫 번째 트랜잭션 서명자를 beneficiary로 설정
+                state_root: B256::ZERO, // 나중에 업데이트됨
+                transactions_root: block_body.calculate_tx_root(),
+                receipts_root: B256::ZERO, // 나중에 업데이트됨
+                logs_bloom: Default::default(),
+                difficulty: U256::ZERO,
+                number: 1, // genesis 다음 블록
+                gas_limit: 30_000_000u64.into(), // 적절한 가스 리밋 설정
+                gas_used: 0, // 나중에 업데이트됨
+                timestamp: 0, // 현재 시간으로 설정하거나 적절한 값 사용
+                extra_data: vec![].into(),
+                mix_hash: B256::ZERO,
+                nonce: FixedBytes::<8>::ZERO,
+                base_fee_per_gas: None,
+                withdrawals_root: None,
+                blob_gas_used: None,
+                excess_blob_gas: None,
+                parent_beacon_block_root: Some(B256::ZERO),
+                requests_root: block_body.calculate_requests_root()
+            };
+            let seal = header.clone().seal_slow().seal();
+            let seal = SealedHeader::new(header.clone(), seal);
+
+            let block = reth_primitives::Block {
+                header: header.clone(),
+                body: block_body.clone()
+            };
+
+            let blockwithsenders = BlockWithSenders::new(block, add_v.clone());
+
+            match blockwithsenders {
+                Some(k) => {
+                    
+                    let state_provider = full_node.provider.state_by_block_number_or_tag(BlockNumberOrTag::Number(0)).unwrap();
+
+                    let mut db = reth_revm::database::StateProviderDatabase::new(state_provider);
+
+                    let input = BlockExecutionInput::new(&k, U256::ZERO);
+
+                    let outcome = full_node.block_executor.executor(db).execute(input);
+
+                    match outcome {
+                        Ok(outcome) => {
+                            println!("진입!!!");
+                            let outcome: BlockExecutionOutput<Receipt> = outcome.into();
+                            let outcome = ExecutionOutcome {
+                                bundle: outcome.state,
+                                receipts: Receipts::from(outcome.receipts),
+                                first_block: 1,
+                                requests: Vec::<Requests>::new()
+                            };
+                            println!("{:?}",outcome);
+                            let h = HashedPostStateSorted::default();
+                            let t = TrieUpdates::default();
+                            let mut v = Vec::<SealedBlockWithSenders>::new();
+                            let seal_block = SealedBlock::new(seal, block_body);
+                            let seal_block_v = SealedBlockWithSenders::new(seal_block, add_v).unwrap();
+                            v.push(seal_block_v);
+                            let result = db_provider.append_blocks_with_state(v, outcome, h, t).unwrap();
+                            
+                            let consensus =  ctx.consensus();
+                            AutoSealBuilder::
+                            
+                        }
+                        Err(e) => {
+                            println!("{:?}", e);
+                        }
+                    }
+                }
+                None =>{
+                    println!("썩 꺼지라");
+                }
+
+            }
+
+
+        }
+
+       
+
+
+            
         let handle = NodeHandle {
             node_exit_future: NodeExitFuture::new(
                 async { rx.await? },
@@ -436,3 +737,5 @@ where
 
     
 }
+
+

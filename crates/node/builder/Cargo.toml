@@ -59,11 +59,14 @@ reth-tokio-util.workspace = true
 reth-tracing.workspace = true
 reth-transaction-pool.workspace = true
 reth-rpc-server-types.workspace = true
-
+reth-revm.workspace =  true
+reth-execution-types.workspace = true
+reth-trie.workspace = true
 ## ethereum
 alloy-primitives.workspace = true
 alloy-rpc-types = { workspace = true, features = ["engine"] }
-
+ethereum-consensus = { git = "https://github.com/ralexstokes/ethereum-consensus", rev = "2bcb975" }
+alloy-consensus.workspace =  true
 ## async
 futures.workspace = true
 tokio = { workspace = true, features = [

@@ -3,11 +3,11 @@
     "timestamp": "0x0",
     "extraData": "0x5343",
     "gasLimit": "0x13880",
-    "difficulty": "0x400000000",
+    "difficulty": "0x4",
     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "coinbase": "0x0000000000000000000000000000000000000000",
     "alloc": {
-        "0xc91b82a33dadea109f71a3344d1bd6aac77a3a40": {
+        "0xD8876c2723eb37C93fdCA683A8aC77379265ebDA": {
             "balance": "0x4a47e3c12448f4ad000000"
         }
     },

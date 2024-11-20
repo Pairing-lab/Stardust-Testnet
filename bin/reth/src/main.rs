@@ -64,9 +64,9 @@ fn main() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
 
-    let path = MaybePlatformPath::<DataDirPath>::from_str("/Users/yoonjae/Library/Application Support/reth/stardust").unwrap();
-    let stardust_path = path.unwrap_or_chain_default(Chain::sepolia(), DatadirArgs::default());
-    println!("{:?}", stardust_path);
+    //let path = MaybePlatformPath::<DataDirPath>::from_str("/Users/yoonjae/Library/Application Support/reth/stardust").unwrap();
+    //let stardust_path = path.unwrap_or_chain_default(Chain::sepolia(), DatadirArgs::default());
+    //println!("{:?}", stardust_path);
 
     if let Err(err) =
         Cli::<EthereumChainSpecParser, EngineArgs>::parse().run(|builder, engine_args| async move {
@@ -88,7 +88,7 @@ fn main() {
                         .launch_with_fn(|builder| {
                             let launcher = EngineNodeLauncher::new(
                                 builder.task_executor().clone(),
-                                stardust_path,
+                                builder.config().datadir(),
                                 engine_tree_config,
                             );
                             builder.launch_with(launcher)

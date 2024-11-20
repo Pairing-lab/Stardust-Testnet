@@ -192,6 +192,8 @@ where
         self.to_service.send(PayloadServiceCommand::PayloadAttributes(id, tx)).ok()?;
         rx.await.ok()?
     }
+    
+
 }
 
 impl<T> Clone for PayloadBuilderHandle<T>

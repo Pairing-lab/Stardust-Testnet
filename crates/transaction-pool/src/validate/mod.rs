@@ -383,6 +383,7 @@ impl<T: PoolTransaction<Consensus: Into<TransactionSignedEcRecovered>>> ValidPoo
     }
 }
 
+
 #[cfg(test)]
 impl<T: PoolTransaction> Clone for ValidPoolTransaction<T> {
     fn clone(&self) -> Self {
