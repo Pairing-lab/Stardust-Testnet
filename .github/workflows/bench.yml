@@ -23,7 +23,7 @@ jobs:
     # Only run benchmarks in merge groups and on main
     if: github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Valgrind
         run: sudo apt update && sudo apt install valgrind
       - uses: dtolnay/rust-toolchain@stable
@@ -45,7 +45,7 @@ jobs:
           which iai-callgrind-runner
           echo "::endgroup::"
       - name: Checkout base
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.base_ref || 'main' }}
       # On `main` branch, generates test vectors and serializes them to disk using `serde-json`.
@@ -55,7 +55,7 @@ jobs:
       - name: Save baseline
         run: cargo bench -p reth-db --bench iai --profile profiling --features test-utils -- --save-baseline=$BASELINE
       - name: Checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           clean: false
       # Runs iai on incoming merge using previously generated test-vectors and compares the report against `main` report.
